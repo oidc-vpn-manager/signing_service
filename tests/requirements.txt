@@ -1,0 +1,10 @@
+pytest
+pytest-cov
+pyfakefs
+freezegun
+pytest-flask
+selenium
+webdriver-manager
+requests
+pytest-httpserver
+docker

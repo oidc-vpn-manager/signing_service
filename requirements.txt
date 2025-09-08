@@ -1,0 +1,6 @@
+Flask
+cryptography
+PyYAML
+flask-swagger-ui
+gunicorn
+requests

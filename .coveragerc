@@ -1,0 +1,11 @@
+[run]
+omit = 
+    app/gunicorn_logging.py
+    tests/*
+
+[report]
+show_missing = True
+skip_covered = True
+
+[html]
+directory = htmlcov

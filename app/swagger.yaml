@@ -1,0 +1,330 @@
+openapi: 3.0.0
+info:
+  title: OpenVPN Manager Signing Service API
+  description: |
+    Internal API for the OpenVPN Manager signing service.
+    
+    This service handles cryptographic operations including certificate signing,
+    CRL generation, and certificate revocation. It automatically logs all
+    certificate operations to the Certificate Transparency service.
+    
+    **Security**: All endpoints require API secret authentication from the frontend service.
+    This is an internal service-to-service API and should not be exposed externally.
+    
+    **Certificate Types**: Supports both 'client' and 'server' certificate types
+    with appropriate X.509 extensions and key usage.
+  version: "1.0.0"
+  contact:
+    email: jon+openvpnmanagersecurity@sprig.gs
+  license:
+    name: AGPL v3
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+
+servers:
+  - url: /api
+    description: Internal signing service API
+
+security:
+  - apiKeyAuth: []
+
+paths:
+  /v1/sign-csr:
+    post:
+      summary: Sign a Certificate Signing Request (CSR)
+      description: |
+        Accepts a PEM-encoded CSR, signs it with the Intermediate CA,
+        and returns the signed certificate. The certificate is automatically
+        logged to the Certificate Transparency service for audit purposes.
+      tags:
+        - Certificate Signing
+      requestBody:
+        description: Certificate signing request with metadata
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                csr:
+                  type: string
+                  description: The PEM-encoded Certificate Signing Request
+                user_id:
+                  type: string
+                  description: The ID of the user requesting the certificate
+                certificate_type:
+                  type: string
+                  description: The type of certificate being requested
+                  enum: [client, server]
+                  default: client
+                client_ip:
+                  type: string
+                  description: Client IP address for geolocation tracking
+              required:
+                - csr
+      responses:
+        '200':
+          description: Successfully signed the CSR
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  certificate:
+                    type: string
+                    description: The PEM-encoded signed certificate
+                required:
+                  - certificate
+        '400':
+          description: Bad request - invalid CSR or missing required data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - invalid or missing API secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/generate-crl:
+    post:
+      summary: Generate a Certificate Revocation List (CRL)
+      description: |
+        Generate a Certificate Revocation List (CRL) based on provided revoked certificates.
+        Frontend service calls this with a list of revoked certificates from CT service.
+      tags:
+        - CRL Generation
+      requestBody:
+        description: List of revoked certificates
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                revoked_certificates:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      serial_number:
+                        type: string
+                      revocation_date:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                next_update_hours:
+                  type: integer
+                  default: 24
+      responses:
+        '200':
+          description: Successfully generated the CRL
+          content:
+            application/pkix-crl:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Bad request, invalid data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized, invalid or missing API secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/revoke-certificate:
+    post:
+      summary: Revoke a certificate
+      description: |
+        Revoke a certificate by its fingerprint. This endpoint is called by the Frontend service
+        to revoke certificates. The revocation is logged to the Certificate Transparency service.
+      tags:
+        - Certificate Revocation
+      requestBody:
+        description: Certificate to revoke
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fingerprint:
+                  type: string
+                  description: The SHA256 fingerprint of the certificate to revoke
+                reason:
+                  type: string
+                  description: The reason for revocation
+                revoked_by:
+                  type: string
+                  description: The ID of the user revoking the certificate
+              required:
+                - fingerprint
+                - reason
+                - revoked_by
+      responses:
+        '200':
+          description: Successfully revoked the certificate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificate revoked successfully
+        '400':
+          description: Bad request, invalid data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized, invalid or missing API secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Certificate Transparency service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/bulk-revoke-user-certificates:
+    post:
+      summary: Bulk revoke all active certificates for a specific user
+      description: |
+        Bulk revoke all active certificates for a specific user.
+        This endpoint is called by the Frontend service for admin bulk revocations.
+      tags:
+        - Certificate Revocation
+      requestBody:
+        description: User to revoke certificates for
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  description: The ID of the user to revoke certificates for
+                reason:
+                  type: string
+                  description: The reason for revocation
+                revoked_by:
+                  type: string
+                  description: The ID of the user revoking the certificates
+              required:
+                - user_id
+                - reason
+                - revoked_by
+      responses:
+        '200':
+          description: Successfully revoked the certificates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Successfully revoked 2 certificates for user test-user
+        '400':
+          description: Bad request, invalid data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized, invalid or missing API secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Certificate Transparency service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Secret
+      description: |
+        API secret for inter-service authentication between frontend and signing service.
+        This secret is configured via environment variables and shared between services.
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+          example: "An internal error occurred"
+      required:
+        - error
+      description: Standard error response format
+
+tags:
+  - name: Certificate Signing
+    description: |
+      Certificate signing operations using the intermediate CA.
+      Automatically logs all certificates to Certificate Transparency service.
+  - name: Certificate Revocation
+    description: |
+      Certificate revocation operations and CRL generation.
+      Supports individual and bulk revocation with CT logging.
+  - name: CRL Generation
+    description: |
+      Certificate Revocation List generation for OpenVPN servers.
+      Generated on-demand from Certificate Transparency data.
