@@ -728,3 +728,80 @@ class TestSwaggerSpecRoute:
         assert response.status_code == 200
         # Should return YAML content
         assert response.headers['Content-Type'] in ['application/x-yaml', 'text/yaml', 'text/plain', 'application/octet-stream']
+
+
+class TestSignCertificateWithRequestMetadata:
+    """Test sign_certificate_request with request_metadata parameter - covers line 78."""
+
+    @patch('app.routes.api.v1.load_intermediate_ca')
+    @patch('app.routes.api.v1.sign_csr')
+    @patch('app.routes.api.v1.log_certificate_to_ct')
+    def test_request_metadata_update_requester_info(self, mock_log_cert, mock_sign_csr, mock_load_ca, client):
+        """Test that request_metadata is added to requester_info when provided - line 78."""
+        # Create a proper CSR
+        client_key = ed25519.Ed25519PrivateKey.generate()
+        csr = x509.CertificateSigningRequestBuilder().subject_name(
+            x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test.example.com")])
+        ).sign(client_key, None)
+        csr_pem = csr.public_bytes(serialization.Encoding.PEM).decode('utf-8')
+
+        # Mock CA loading
+        mock_key = Mock()
+        mock_cert = Mock()
+        mock_load_ca.return_value = (mock_key, mock_cert)
+
+        # Mock certificate signing
+        mock_new_cert = Mock()
+        mock_new_cert.public_bytes.return_value = b'-----BEGIN CERTIFICATE-----\ntest-cert\n-----END CERTIFICATE-----'
+        # Mock subject for certificate transparency logging
+        mock_cn_attr = Mock()
+        mock_cn_attr.value = 'test.example.com'
+        mock_new_cert.subject.get_attributes_for_oid.return_value = [mock_cn_attr]
+        mock_sign_csr.return_value = mock_new_cert
+
+        # Mock CT logging
+        mock_log_cert.return_value = {'status': 'logged'}
+
+        # Test data WITH request_metadata to trigger line 78
+        test_data = {
+            'csr': csr_pem,
+            'user_id': 'test_user',
+            'certificate_type': 'client',
+            'client_ip': '192.168.1.100',
+            'request_metadata': {
+                'user_email': 'user@example.com',
+                'browser': 'Chrome',
+                'browser_version': '91.0.4472.124',
+                'os': 'Windows 10',
+                'is_mobile': False,
+                'request_timestamp': '2025-01-01T12:00:00Z'
+            }
+        }
+
+        response = client.post(
+            '/api/v1/sign-csr',
+            json=test_data,
+            headers={'Authorization': 'Bearer test-api-secret'}
+        )
+
+        assert response.status_code == 200
+
+        # Verify that log_certificate_to_ct was called with merged requester_info
+        mock_log_cert.assert_called_once()
+        call_args = mock_log_cert.call_args
+
+        # Check that requester_info contains both base info and request_metadata
+        requester_info = call_args[1]['requester_info']
+
+        # Base info should be present
+        assert requester_info['issued_by'] == 'signing-service'
+        assert requester_info['request_source'] == '192.168.1.100'
+        assert 'user_agent' in requester_info
+
+        # request_metadata should be merged in (line 78)
+        assert requester_info['user_email'] == 'user@example.com'
+        assert requester_info['browser'] == 'Chrome'
+        assert requester_info['browser_version'] == '91.0.4472.124'
+        assert requester_info['os'] == 'Windows 10'
+        assert requester_info['is_mobile'] is False
+        assert requester_info['request_timestamp'] == '2025-01-01T12:00:00Z'

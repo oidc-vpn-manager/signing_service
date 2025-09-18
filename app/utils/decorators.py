@@ -23,7 +23,9 @@ def frontend_api_secret_required(f):
         
         sent_secret = auth_header.split('Bearer ')[1]
         
-        if sent_secret != expected_secret:
+        # Use constant-time comparison to prevent timing attacks
+        import hmac
+        if not hmac.compare_digest(sent_secret.encode('utf-8'), expected_secret.encode('utf-8')):
             abort(401, description="Unauthorized: Invalid secret.")
         
         return f(*args, **kwargs)

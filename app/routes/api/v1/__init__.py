@@ -22,11 +22,46 @@ def sign_certificate_request():
     if not data or 'csr' not in data:
         current_app.logger.warning("Request failed: missing 'csr' field in JSON body.")
         return jsonify(error="Request body must be JSON and contain a 'csr' field."), 400
-    
-    csr_pem = data['csr'].encode('utf-8')
-    user_id = data.get('user_id')  # Extract user_id for certificate tracking
-    certificate_type = data.get('certificate_type', 'client')  # Default to 'client' if not specified
-    client_ip = data.get('client_ip')  # Extract client IP from frontend
+
+    # 1.1. Validate CSR field
+    csr_data = data['csr']
+    if not isinstance(csr_data, str) or not csr_data.strip():
+        current_app.logger.warning("Request failed: 'csr' field must be a non-empty string.")
+        return jsonify(error="CSR must be a non-empty string."), 400
+
+    # 1.2. Validate other fields
+    user_id = data.get('user_id')
+    if user_id is not None and (not isinstance(user_id, str) or not user_id.strip()):
+        current_app.logger.warning("Request failed: 'user_id' field must be a non-empty string if provided.")
+        return jsonify(error="user_id must be a non-empty string if provided."), 400
+
+    certificate_type = data.get('certificate_type', 'client')
+    if not isinstance(certificate_type, str) or certificate_type not in ['client', 'server']:
+        current_app.logger.warning(f"Request failed: invalid certificate_type '{certificate_type}'.")
+        return jsonify(error="certificate_type must be 'client' or 'server'."), 400
+
+    client_ip = data.get('client_ip')
+    if client_ip is not None and not isinstance(client_ip, str):
+        current_app.logger.warning("Request failed: 'client_ip' field must be a string if provided.")
+        return jsonify(error="client_ip must be a string if provided."), 400
+
+    request_metadata = data.get('request_metadata', {})
+    if not isinstance(request_metadata, dict):
+        current_app.logger.warning("Request failed: 'request_metadata' field must be a dictionary if provided.")
+        return jsonify(error="request_metadata must be a dictionary if provided."), 400
+
+    # Limit request_metadata size for DoS protection
+    import json
+    metadata_size = len(json.dumps(request_metadata))
+    if metadata_size > 100 * 1024:  # 100KB limit
+        current_app.logger.warning(f"Request failed: request_metadata too large ({metadata_size} bytes).")
+        return jsonify(error="request_metadata exceeds size limit."), 400
+
+    try:
+        csr_pem = csr_data.encode('utf-8')
+    except UnicodeEncodeError:
+        current_app.logger.warning("Request failed: CSR contains invalid Unicode characters.")
+        return jsonify(error="CSR contains invalid characters."), 400
     current_app.logger.debug(f"Certificate signing request - user_id: {user_id}, certificate_type: {certificate_type}")
 
     try:
@@ -65,11 +100,16 @@ def sign_certificate_request():
                 if forwarded_ips:
                     original_client_ip = forwarded_ips[0].strip()
             
+            # Build requester info with rich metadata from frontend if available
             requester_info = {
                 'issued_by': 'signing-service',
                 'request_source': original_client_ip or 'unknown',
                 'user_agent': request.headers.get('User-Agent', 'unknown')
             }
+
+            # Include rich metadata from frontend request if provided
+            if request_metadata:
+                requester_info.update(request_metadata)
             
             # Log to Certificate Transparency service
             ct_result = log_certificate_to_ct(
@@ -101,10 +141,10 @@ def sign_certificate_request():
 
     except ValueError as e:
         current_app.logger.error(f"Failed to process CSR: {e}")
-        return jsonify(error=f"Invalid CSR provided: {e}"), 400
+        return jsonify(error="Invalid CSR provided"), 400
     except Exception as e:
         current_app.logger.critical(f"An unexpected internal error occurred: {e}", exc_info=True)
-        return jsonify(error=f"An internal error occurred: {e}"), 500
+        return jsonify(error="An internal error occurred"), 500
 
 
 @bp.route('/generate-crl', methods=['POST'])
@@ -153,7 +193,7 @@ def generate_crl():
         
     except Exception as e:
         current_app.logger.error(f"Failed to generate CRL: {e}", exc_info=True)
-        return jsonify(error=f"Failed to generate CRL: {e}"), 500
+        return jsonify(error="Failed to generate CRL"), 500
 
 
 @bp.route('/revoke-certificate', methods=['POST'])

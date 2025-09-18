@@ -41,4 +41,8 @@ def create_app():
     def swagger_spec():
         return send_from_directory(os.path.dirname(os.path.abspath(__file__)), 'swagger.yaml')
 
+    # Configure structured security logging
+    from app.utils.logging_config import configure_security_logging
+    configure_security_logging(app)
+
     return app

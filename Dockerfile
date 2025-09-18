@@ -24,7 +24,7 @@ RUN apt-get update && \
 WORKDIR /usr/src/app
 
 COPY --from=builder /usr/src/app/wheels /wheels
-RUN pip install --break-system-packages --no-cache /wheels/*
+RUN pip install --break-system-packages --no-cache --ignore-installed packaging /wheels/*
 
 COPY ./app ./app
 COPY ./wsgi.py .
