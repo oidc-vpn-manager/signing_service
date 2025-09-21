@@ -7,6 +7,7 @@ from app.utils.cryptography import load_intermediate_ca
 from app.utils.ca_core import sign_csr
 from app.utils.certtransparency_client import log_certificate_to_ct, get_ct_client, CTLogError
 from app.utils.crl_generator import CRLGenerator
+from app.utils.secure_memory import secure_key_context
 
 bp = Blueprint('v1', __name__, url_prefix='/v1')
 
@@ -69,18 +70,18 @@ def sign_certificate_request():
         csr = x509.load_pem_x509_csr(csr_pem)
         current_app.logger.debug(f"Successfully loaded CSR for subject: {csr.subject}")
 
-        # 3. Load the online Intermediate CA to act as the issuer
-        current_app.logger.debug("Loading Intermediate CA...")
-        issuer_key, issuer_cert = load_intermediate_ca()
-        current_app.logger.debug("Intermediate CA loaded successfully.")
+        # 3. Load the online Intermediate CA to act as the issuer and sign within secure context
+        current_app.logger.debug("Loading Intermediate CA in secure context...")
+        with secure_key_context(load_intermediate_ca) as (issuer_key, issuer_cert):
+            current_app.logger.debug("Intermediate CA loaded successfully in secure context.")
 
-        # 4. Sign the CSR to create the new certificate
-        current_app.logger.debug("Signing new certificate...")
-        new_cert = sign_csr(csr=csr, issuer_cert=issuer_cert, issuer_key=issuer_key)
-        current_app.logger.debug(f"Successfully signed new certificate for: {new_cert.subject}")
+            # 4. Sign the CSR to create the new certificate
+            current_app.logger.debug("Signing new certificate...")
+            new_cert = sign_csr(csr=csr, issuer_cert=issuer_cert, issuer_key=issuer_key)
+            current_app.logger.debug(f"Successfully signed new certificate for: {new_cert.subject}")
 
-        # 5. Serialize the new certificate to PEM format for the response
-        cert_pem = new_cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
+            # 5. Serialize the new certificate to PEM format for the response
+            cert_pem = new_cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
 
         # 6. Log the certificate to the Certificate Transparency service
         try:
@@ -164,23 +165,22 @@ def generate_crl():
     try:
         current_app.logger.info(f"Generating CRL for {len(revoked_certificates)} revoked certificates")
         
-        # Load CA materials (reuse the existing signing service utilities)
-        issuer_key, issuer_cert = load_intermediate_ca()
-        
-        # Convert CA materials to PEM strings for CRL generator
-        ca_cert_pem = issuer_cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
-        ca_key_pem = issuer_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ).decode('utf-8')
-        
-        # Initialize CRL generator and load CA materials  
-        crl_generator = CRLGenerator()
-        crl_generator.load_ca_materials(ca_cert_pem, ca_key_pem, '')  # No passphrase needed for decrypted key
-        
-        # Generate the CRL
-        crl_data = crl_generator.create_crl(revoked_certificates, next_update_hours)
+        # Load CA materials in secure context
+        with secure_key_context(load_intermediate_ca) as (issuer_key, issuer_cert):
+            # Convert CA materials to PEM strings for CRL generator
+            ca_cert_pem = issuer_cert.public_bytes(encoding=serialization.Encoding.PEM).decode('utf-8')
+            ca_key_pem = issuer_key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption()
+            ).decode('utf-8')
+
+            # Initialize CRL generator and load CA materials
+            crl_generator = CRLGenerator()
+            crl_generator.load_ca_materials(ca_cert_pem, ca_key_pem, '')  # No passphrase needed for decrypted key
+
+            # Generate the CRL
+            crl_data = crl_generator.create_crl(revoked_certificates, next_update_hours)
         
         current_app.logger.info(f"Successfully generated CRL with {len(revoked_certificates)} entries")
         

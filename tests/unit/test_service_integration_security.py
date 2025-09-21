@@ -311,27 +311,28 @@ class TestServiceIntegrationSecurity:
 
         def make_request():
             try:
-                with patch('app.routes.api.v1.log_certificate_to_ct', side_effect=mock_ct_logging):
-                    response = client.post('/api/v1/sign-csr',
-                                         json={'csr': valid_csr_pem, 'user_id': f'user_{threading.current_thread().ident}'},
-                                         headers={'Authorization': 'Bearer test-api-secret'})
-                    results.append(response.status_code)
+                response = client.post('/api/v1/sign-csr',
+                                     json={'csr': valid_csr_pem, 'user_id': f'user_{threading.current_thread().ident}'},
+                                     headers={'Authorization': 'Bearer test-api-secret'})
+                results.append(response.status_code)
             except Exception as e:
                 errors.append(str(e))
 
-        # Create concurrent requests
-        threads = []
-        for _ in range(10):
-            thread = threading.Thread(target=make_request)
-            threads.append(thread)
+        # Apply patch globally before starting threads to avoid race conditions
+        with patch('app.routes.api.v1.log_certificate_to_ct', side_effect=mock_ct_logging):
+            # Create concurrent requests
+            threads = []
+            for _ in range(10):
+                thread = threading.Thread(target=make_request)
+                threads.append(thread)
 
-        # Start all threads simultaneously
-        for thread in threads:
-            thread.start()
+            # Start all threads simultaneously
+            for thread in threads:
+                thread.start()
 
-        # Wait for completion
-        for thread in threads:
-            thread.join()
+            # Wait for completion
+            for thread in threads:
+                thread.join()
 
         # Verify no race conditions occurred
         assert len(errors) == 0, f"Race condition errors: {errors}"
