@@ -724,10 +724,10 @@ class TestSwaggerSpecRoute:
     def test_swagger_spec_route(self, client):
         """Test that swagger spec route returns the YAML file."""
         response = client.get('/swagger.yaml')
-        
+
         assert response.status_code == 200
-        # Should return YAML content
-        assert response.headers['Content-Type'] in ['application/x-yaml', 'text/yaml', 'text/plain', 'application/octet-stream']
+        # Flask now correctly returns application/yaml for YAML files
+        assert response.headers['Content-Type'] in ['application/yaml', 'application/x-yaml', 'text/yaml', 'text/plain', 'application/octet-stream']
 
 
 class TestSignCertificateWithRequestMetadata:
