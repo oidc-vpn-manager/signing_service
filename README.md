@@ -80,15 +80,15 @@ All tests must maintain 100% code coverage and pass without errors.
 
 ### Docker Container
 ```bash
-docker build -t openvpn-manager/signing .
+docker build -t oidc-vpn-manager/signing .
 docker run -d --name signing-service \
   --env-file .env.signing \
   -v /path/to/pki:/pki:ro \
-  openvpn-manager/signing
+  oidc-vpn-manager/signing
 ```
 
 ### Kubernetes
-Deploy using the Helm chart in `deploy/helm/openvpn-manager/`.
+Deploy using the Helm chart in `deploy/helm/oidc-vpn-manager/`.
 
 ## 🔍 Monitoring
 
