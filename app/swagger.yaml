@@ -1,8 +1,8 @@
 openapi: 3.0.0
 info:
-  title: OpenVPN Manager Signing Service API
+  title: OIDC VPN Manager Signing Service API
   description: |
-    Internal API for the OpenVPN Manager signing service.
+    Internal API for the OIDC VPN Manager signing service.
     
     This service handles cryptographic operations including certificate signing,
     CRL generation, and certificate revocation. It automatically logs all

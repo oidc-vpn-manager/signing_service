@@ -1,10 +1,10 @@
 # Signing Service
 
-This file provides LLMs with guidance for working with the Signing Service component of OpenVPN Manager.
+This file provides LLMs with guidance for working with the Signing Service component of OIDC VPN Manager.
 
 ## Service Overview
 
-The Signing Service is a security-focused microservice responsible for all cryptographic operations within OpenVPN Manager. It operates on port 8500 and ensures private key materials never leave the service boundary, providing secure certificate generation and management.
+The Signing Service is a security-focused microservice responsible for all cryptographic operations within OIDC VPN Manager. It operates on port 8500 and ensures private key materials never leave the service boundary, providing secure certificate generation and management.
 
 ## Architecture
 

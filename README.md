@@ -1,6 +1,6 @@
-# Signing Service for OpenVPN Manager
+# Signing Service for OIDC VPN Manager
 
-The Signing Service is an isolated microservice responsible for all cryptographic operations within the OpenVPN Manager system. This service ensures that private key materials are never exposed to the frontend tier, providing a secure separation of concerns for certificate generation and management.
+The Signing Service is an isolated microservice responsible for all cryptographic operations within the OIDC VPN Manager system. This service ensures that private key materials are never exposed to the frontend tier, providing a secure separation of concerns for certificate generation and management.
 
 ## 🔐 Security Architecture
 

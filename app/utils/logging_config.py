@@ -1,5 +1,5 @@
 """
-Logging Configuration for OpenVPN Manager Signing Service
+Logging Configuration for OIDC VPN Manager Signing Service
 
 This module configures structured JSON logging for the Signing service,
 with separate loggers for security events, application events, and access logs.

@@ -31,7 +31,7 @@ def create_app():
         SWAGGER_URL,
         API_URL,
         config={
-            'app_name': "OpenVPN Manager Signing API"
+            'app_name': "OIDC VPN Manager Signing API"
         }
     )
 

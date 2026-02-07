@@ -1,5 +1,5 @@
 """
-Core Certificate Authority (CA) cryptographic operations for OpenVPN Manager.
+Core Certificate Authority (CA) cryptographic operations for OIDC VPN Manager.
 
 This module provides the fundamental certificate signing functionality used by
 the signing service. It handles X.509 certificate generation from Certificate
