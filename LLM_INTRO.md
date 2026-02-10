@@ -21,6 +21,7 @@ The Signing Service is a security-focused microservice responsible for all crypt
     - `certtransparency_client.py` - CT service integration
     - `decorators.py` - Authentication decorators
     - `environment.py` - Environment variable handling
+    - `tls_setup.py` - Application-level TLS configuration and snakeoil cert generation
   - `config.py` - Application configuration
   - `swagger.yaml` - API documentation specification
 
@@ -107,6 +108,28 @@ python -m pytest tests/ --cov=app --cov-report=html
 - `SIGNING_SERVICE_API_SECRET_FILE` - API authentication secret file
 - `CERTTRANSPARENCY_SERVICE_URL` - CT service URL for logging
 - `CT_SERVICE_API_SECRET_FILE` - CT service API secret file
+
+### Application-Level TLS
+
+The service supports in-built TLS at the Gunicorn level, configured via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_APPLICATION_TLS` | `true` | Enable/disable TLS on the Gunicorn server |
+| `APPLICATION_TLS_CERT` | `/app/tls/application.crt` | Path to TLS certificate |
+| `APPLICATION_TLS_KEY` | `/app/tls/application.key` | Path to TLS private key |
+| `APPLICATION_CA_CERT` | (empty) | Optional CA certificate for chain serving |
+| `APPLICATION_TLS_CN` | container hostname | Common name for snakeoil cert |
+| `APPLICATION_TLS_SAN` | container hostname | Comma-separated SANs for snakeoil cert |
+| `CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE` | `true` | Validate TLS for CT service calls |
+
+**Snakeoil Certificates**: If `ENABLE_APPLICATION_TLS` is enabled but the cert/key files don't exist at the configured paths, the service auto-generates a self-signed EC P-256 certificate on startup. This requires writable paths at the cert/key locations (handled by emptyDir volume mount in Kubernetes).
+
+**Chain Serving**: When `APPLICATION_CA_CERT` is set and the file exists, the server cert and CA cert are concatenated into a chain file at `/tmp/tls/chain.crt`, which is passed to Gunicorn's `--certfile`. This allows clients to validate the full certificate chain.
+
+**Client TLS Verification**: When `CERTTRANSPARENCY_SERVICE_URL` uses `https://`, the `CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE` setting controls whether the service verifies the CT service's TLS certificate. Set to `false` when using self-signed certificates between services.
+
+**Startup**: The service uses `entrypoint.py` which calls `configure_tls_for_gunicorn()` from `app/utils/tls_setup.py`, then execs Gunicorn with appropriate `--certfile`/`--keyfile` arguments.
 
 ### PKI Configuration
 The service requires proper PKI materials:
@@ -212,6 +235,7 @@ The service requires proper PKI materials:
 
 - `import_pki.sh` - PKI import and setup script
 - `wsgi.py` - WSGI application entry point
+- `entrypoint.py` - Python entrypoint for TLS-aware Gunicorn startup
 - `Dockerfile` - Container build configuration
 - `tests/` - Comprehensive test suite with security focus
 - `.coveragerc` - Coverage configuration

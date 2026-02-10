@@ -36,7 +36,10 @@ class CTLogClient:
         )
         self.api_secret = api_secret or current_app.config.get('CT_SERVICE_API_SECRET')
         self.timeout = timeout
-        
+        from app.utils.environment import loadBoolConfigValue
+        tls_validate = loadBoolConfigValue('CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE', 'true')
+        self.tls_verify = tls_validate if self.base_url.startswith('https://') else True
+
         if not self.api_secret:
             current_app.logger.warning(
                 "CT_SERVICE_API_SECRET not configured - certificate logging will fail"
@@ -92,20 +95,21 @@ class CTLogClient:
         try:
             current_app.logger.debug(f"Logging certificate to CT service: {url}")
             response = requests.post(
-                url, 
-                json=payload, 
-                headers=headers, 
-                timeout=self.timeout
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+                verify=self.tls_verify
             )
             response.raise_for_status()
-            
+
             result = response.json()
             current_app.logger.info(
                 f"Certificate logged to CT service successfully: "
                 f"fingerprint={result.get('certificate', {}).get('fingerprint_sha256', 'unknown')}"
             )
             return result
-            
+
         except requests.RequestException as e:
             current_app.logger.error(f"Failed to log certificate to CT service: {e}")
             raise CTLogError(f"Failed to communicate with CT service: {e}")
@@ -137,7 +141,7 @@ class CTLogClient:
         
         try:
             current_app.logger.debug(f"Getting certificate from CT service: {url}")
-            response = requests.get(url, headers=headers, timeout=self.timeout)
+            response = requests.get(url, headers=headers, timeout=self.timeout, verify=self.tls_verify)
             response.raise_for_status()
             return response.json()
             
@@ -180,14 +184,15 @@ class CTLogClient:
         try:
             current_app.logger.debug(f"Revoking certificate in CT service: {url}")
             response = requests.post(
-                url, 
-                json=payload, 
-                headers=headers, 
-                timeout=self.timeout
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+                verify=self.tls_verify
             )
             response.raise_for_status()
             return response.json()
-            
+
         except requests.RequestException as e:
             current_app.logger.error(f"Failed to revoke certificate in CT service: {e}")
             raise CTLogError(f"Failed to communicate with CT service: {e}")
@@ -227,14 +232,15 @@ class CTLogClient:
         try:
             current_app.logger.debug(f"Bulk revoking certificates for user {user_id} in CT service: {url}")
             response = requests.post(
-                url, 
-                json=payload, 
-                headers=headers, 
-                timeout=self.timeout
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+                verify=self.tls_verify
             )
             response.raise_for_status()
             return response.json()
-            
+
         except requests.RequestException as e:
             current_app.logger.error(f"Failed to bulk revoke certificates in CT service: {e}")
             raise CTLogError(f"Failed to communicate with CT service: {e}")

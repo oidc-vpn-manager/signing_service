@@ -42,7 +42,11 @@ class CTClient:
             'Content-Type': 'application/json',
             'User-Agent': 'OpenVPN-Signing-Service/1.0'
         })
-    
+        from app.utils.environment import loadBoolConfigValue
+        tls_validate = loadBoolConfigValue('CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE', 'true')
+        if self.ct_service_url.startswith('https://') and not tls_validate:
+            self.session.verify = False
+
     def get_next_crl_number(self, issuer_identifier: str) -> int:
         """
         Get the next CRL number for the given issuer.

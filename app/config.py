@@ -1,5 +1,5 @@
 import os
-from app.utils.environment import loadConfigValueFromFileOrEnvironment
+from app.utils.environment import loadConfigValueFromFileOrEnvironment, loadBoolConfigValue
 
 class Config:
     """
@@ -21,3 +21,4 @@ class Config:
     # Certificate Transparency Service Configuration
     CERTTRANSPARENCY_SERVICE_URL = os.environ.get('CERTTRANSPARENCY_SERVICE_URL', 'http://certtransparency:8800/api/v1')
     CT_SERVICE_API_SECRET = loadConfigValueFromFileOrEnvironment('CT_SERVICE_API_SECRET')
+    CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE = loadBoolConfigValue('CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE', 'true')
