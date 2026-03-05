@@ -77,7 +77,7 @@ def sign_certificate_request():
 
             # 4. Sign the CSR to create the new certificate
             current_app.logger.debug("Signing new certificate...")
-            new_cert = sign_csr(csr=csr, issuer_cert=issuer_cert, issuer_key=issuer_key)
+            new_cert = sign_csr(csr=csr, issuer_cert=issuer_cert, issuer_key=issuer_key, certificate_type=certificate_type)
             current_app.logger.debug(f"Successfully signed new certificate for: {new_cert.subject}")
 
             # 5. Serialize the new certificate to PEM format for the response

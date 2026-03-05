@@ -64,17 +64,84 @@ class TestSignCsr:
         Tests that a CSR can be signed, creating a valid certificate.
         """
         issuer_key, issuer_cert = dummy_issuer
-        
+
         with app.app_context():
             new_cert = sign_csr(client_csr, issuer_cert, issuer_key)
 
         assert isinstance(new_cert, x509.Certificate)
         assert new_cert.issuer == issuer_cert.subject
         assert new_cert.subject == client_csr.subject
-        
+
         expected_expiry = datetime.now(timezone.utc) + timedelta(days=365)
         assert new_cert.not_valid_after_utc.date() == expected_expiry.date()
 
+    def test_client_cert_has_correct_extensions(self, app, dummy_issuer, client_csr):
+        """
+        Tests that client certificates have correct X.509v3 extensions.
+
+        OpenVPN requires keyUsage and extendedKeyUsage for TLS verification.
+        Client certs need digitalSignature and clientAuth.
+        """
+        issuer_key, issuer_cert = dummy_issuer
+
+        with app.app_context():
+            new_cert = sign_csr(client_csr, issuer_cert, issuer_key, certificate_type='client')
+
+        # basicConstraints: CA:FALSE
+        bc = new_cert.extensions.get_extension_for_class(x509.BasicConstraints)
+        assert bc.critical is True
+        assert bc.value.ca is False
+
+        # keyUsage: digitalSignature only
+        ku = new_cert.extensions.get_extension_for_class(x509.KeyUsage)
+        assert ku.critical is True
+        assert ku.value.digital_signature is True
+        assert ku.value.key_encipherment is False
+
+        # extendedKeyUsage: clientAuth
+        eku = new_cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+        assert eku.critical is False
+        assert x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH in eku.value
+
+    def test_server_cert_has_correct_extensions(self, app, dummy_issuer, client_csr):
+        """
+        Tests that server certificates have correct X.509v3 extensions.
+
+        OpenVPN requires keyUsage and extendedKeyUsage for TLS verification.
+        Server certs need digitalSignature, keyEncipherment, and serverAuth.
+        """
+        issuer_key, issuer_cert = dummy_issuer
+
+        with app.app_context():
+            new_cert = sign_csr(client_csr, issuer_cert, issuer_key, certificate_type='server')
+
+        # basicConstraints: CA:FALSE
+        bc = new_cert.extensions.get_extension_for_class(x509.BasicConstraints)
+        assert bc.critical is True
+        assert bc.value.ca is False
+
+        # keyUsage: digitalSignature + keyEncipherment
+        ku = new_cert.extensions.get_extension_for_class(x509.KeyUsage)
+        assert ku.critical is True
+        assert ku.value.digital_signature is True
+        assert ku.value.key_encipherment is True
+
+        # extendedKeyUsage: serverAuth
+        eku = new_cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+        assert eku.critical is False
+        assert x509.oid.ExtendedKeyUsageOID.SERVER_AUTH in eku.value
+
+    def test_default_certificate_type_is_client(self, app, dummy_issuer, client_csr):
+        """
+        Tests that omitting certificate_type defaults to client extensions.
+        """
+        issuer_key, issuer_cert = dummy_issuer
+
+        with app.app_context():
+            new_cert = sign_csr(client_csr, issuer_cert, issuer_key)
+
+        eku = new_cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
+        assert x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH in eku.value
 
     def test_signs_csr_with_rsa_issuer(self, app, client_csr):
         """
@@ -96,7 +163,7 @@ class TestSignCsr:
         ).not_valid_after(
             datetime.now(timezone.utc) + timedelta(days=365)
         ).sign(issuer_key, hashes.SHA256())
-        
+
         with app.app_context():
             # Act
             new_cert = sign_csr(client_csr, issuer_cert, issuer_key)

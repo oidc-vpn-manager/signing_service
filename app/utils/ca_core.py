@@ -23,6 +23,7 @@ def sign_csr(
     csr: x509.CertificateSigningRequest,
     issuer_cert: x509.Certificate,
     issuer_key,
+    certificate_type: str = 'client',
 ) -> x509.Certificate:
     """
     Sign a Certificate Signing Request (CSR) and return a valid X.509 certificate.
@@ -35,7 +36,7 @@ def sign_csr(
     - Determines the appropriate signing algorithm based on the CA key type
     - Sets certificate validity period from configuration
     - Generates cryptographically secure serial numbers
-    - Creates properly formatted X.509v3 certificates
+    - Creates properly formatted X.509v3 certificates with appropriate extensions
     - Handles timezone-aware validity periods
 
     Args:
@@ -45,6 +46,9 @@ def sign_csr(
                                       Provides the issuer name and trust chain.
         issuer_key: The intermediate CA private key for signing operations.
                    Supports RSA, ECDSA (P-256, P-384, P-521), Ed25519, and Ed448.
+        certificate_type (str): Type of certificate to issue. Controls X.509v3 extensions:
+            - 'client': digitalSignature key usage, clientAuth EKU (default)
+            - 'server': digitalSignature + keyEncipherment key usage, serverAuth EKU
 
     Returns:
         x509.Certificate: A signed X.509 certificate with:
@@ -54,6 +58,7 @@ def sign_csr(
             - Cryptographically secure serial number
             - Validity period based on configuration (default: 365 days)
             - Appropriate signing algorithm for the CA key type
+            - X.509v3 extensions: basicConstraints, keyUsage, extendedKeyUsage
 
     Configuration:
         END_ENTITY_CERT_LIFESPAN (int): Certificate validity period in days (default: 365)
@@ -68,21 +73,17 @@ def sign_csr(
         >>> from cryptography import x509
         >>> from cryptography.hazmat.primitives import serialization
         >>>
-        >>> # Load CSR and CA materials
-        >>> csr = x509.load_pem_x509_csr(csr_pem.encode())
-        >>> ca_cert = x509.load_pem_x509_certificate(ca_cert_pem.encode())
-        >>> ca_key = serialization.load_pem_private_key(ca_key_pem.encode(), passphrase)
+        >>> # Sign a client CSR
+        >>> signed_cert = sign_csr(csr, ca_cert, ca_key, certificate_type='client')
         >>>
-        >>> # Sign the CSR
-        >>> signed_cert = sign_csr(csr, ca_cert, ca_key)
-        >>>
-        >>> # Convert to PEM format
-        >>> cert_pem = signed_cert.public_bytes(serialization.Encoding.PEM)
+        >>> # Sign a server CSR
+        >>> signed_cert = sign_csr(csr, ca_cert, ca_key, certificate_type='server')
 
     Security Notes:
         - Serial numbers are cryptographically secure (not sequential)
         - Certificates are UTC timezone-aware
-        - Signing algorithms follow current cryptographic best practices
+        - basicConstraints CA:FALSE prevents end-entity certs from acting as CAs
+        - keyUsage and extendedKeyUsage restrict certificate capabilities
         - CA private key should be properly protected with passphrases
     """
     # Get the lifespan from the application config, defaulting to 365 days
@@ -114,6 +115,54 @@ def sign_csr(
     builder = builder.serial_number(x509.random_serial_number())  # Cryptographically secure
     builder = builder.not_valid_before(start_time)
     builder = builder.not_valid_after(end_time)
+
+    # Add X.509v3 extensions based on certificate type
+    # basicConstraints: this is an end-entity certificate, not a CA
+    builder = builder.add_extension(
+        x509.BasicConstraints(ca=False, path_length=None),
+        critical=True,
+    )
+
+    # keyUsage and extendedKeyUsage differ by certificate type
+    if certificate_type == 'server':
+        builder = builder.add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                key_encipherment=True,
+                content_commitment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        builder = builder.add_extension(
+            x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),
+            critical=False,
+        )
+    else:
+        # 'client' or any other type defaults to client extensions
+        builder = builder.add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                key_encipherment=False,
+                content_commitment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=False,
+                decipher_only=False,
+            ),
+            critical=True,
+        )
+        builder = builder.add_extension(
+            x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH]),
+            critical=False,
+        )
 
     # Sign the certificate with the CA private key
     new_cert = builder.sign(issuer_key, signing_algorithm)
