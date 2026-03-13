@@ -16,6 +16,12 @@ from app.utils.ct_client import CTClient, CTClientError, get_ct_client
 class TestCTClient:
     """Test suite for CTClient class."""
     
+    @patch('app.utils.environment.loadBoolConfigValue', return_value=False)
+    def test_init_https_with_tls_validation_disabled(self, mock_bool):
+        """Test that TLS verification is disabled when CERTTRANSPARENCY_SERVICE_URL_TLS_VALIDATE is false."""
+        client = CTClient('https://ct-service:8443', 'test-secret')
+        assert client.session.verify is False
+
     def test_init_configuration(self):
         """Test client initialization and configuration."""
         # Test basic initialization

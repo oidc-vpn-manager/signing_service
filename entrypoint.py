@@ -60,5 +60,6 @@ def main():
     os.execvp(args[0], args)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
+    ## PRAGMA-NO-COVER Exception; JS 2026-03-13 Entrypoint does not need to test this
     main()
