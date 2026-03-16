@@ -11,3 +11,4 @@ def test_health_endpoint(client):
     data = json.loads(response.data)
     assert data['status'] == 'healthy'
     assert data['service'] == 'signing'
+    assert 'version' not in data

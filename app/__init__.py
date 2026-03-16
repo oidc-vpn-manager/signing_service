@@ -15,8 +15,7 @@ def create_app():
     def health_check():
         return jsonify({
             'status': 'healthy',
-            'service': 'signing',
-            'version': '1.0.0'
+            'service': 'signing'
         }), 200
 
     app.register_blueprint(bp)
